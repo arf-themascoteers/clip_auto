@@ -11,31 +11,47 @@ df["index"] += 1
 
 os.makedirs("original", exist_ok=True)
 
-def export_ndwi(row):
+def export_ndwi(row, faulty=False):
     point = ee.Geometry.Point(float(row['lon']), float(row['lat']))
     region = point.buffer(1000)
 
+    start = "2021-06-01"
+    end = "2025-05-30"
+    cloud = 5
+
+    if faulty:
+        start = "2024-06-01"
+        end = "2024-12-30"
+        cloud = 10
+
+    print("Attempting ", faulty)
     image = (
         ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
         .filterBounds(point)
-        .filterDate('2022-01-01', '2025-06-30')
-        .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 5))
+        .filterDate(start, end)
+        .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', cloud))
         .sort('CLOUDY_PIXEL_PERCENTAGE')
         .first()
     )
 
     ndwi = image.normalizedDifference(['B3', 'B8']).rename('NDWI')
+    ndwi_scaled = ndwi.multiply(127.5).add(127.5).uint8()
 
-    vis = ndwi.visualize(min=0, max=1, palette=['000000', '00FFFF'])
-    filename = f"original/{row['index']}.png"
-
-    geemap.download_ee_image(vis, region=region, filename=filename, scale=10, crs='EPSG:3857')
+    geemap.download_ee_image(
+        ndwi_scaled,
+        region=region,
+        filename=f"original/{row['index']}.png",
+        scale=10,
+        crs='EPSG:3857'
+    )
 
 for ind, row in df.iterrows():
+    faulty = False
+    if ind == 1:
+        faulty = True
     try:
-        export_ndwi(row)
+        export_ndwi(row, faulty)
     except Exception as e:
         print(f"Failed for row {row['index']}: {e}")
-    if ind == 5:
-        break
-
+    # if ind == 1:
+    #     break
